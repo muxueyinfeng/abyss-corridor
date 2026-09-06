@@ -224,3 +224,38 @@ const ABYSS_EVENTS = [
       { t: '让他安息', msg: '你用石头垒了个小小的坟。深渊里，同行者值得这点体面。', fx: { morale: 6, shengwang: 1 } },
     ] },
 ];
+
+// ---------- 职业二：影刃（近战刺客 · 毒/连击/暴击） ----------
+const CLASSES = {
+  elementalist: { n: '元素使', icon: '🔥', d: '烈焰与寒冰的施法者。技能：烈焰弹（单体爆发）、寒冰箭（全体控场）。' },
+  shadowblade: { n: '影刃', icon: '🗡️', d: '行走于刀锋与毒雾之间的刺客。技能：影袭（单体连击爆发）、毒刃（淬毒消耗）。被动：影遁（闪避+15%）· 嗜血（暴击回血4%）· 连击本能（20%概率追击半击）· 用毒大师（毒伤+60%）' },
+};
+
+// 新词缀：连击 / 毒伤
+AFFIXES.combo = { n: '连击概率', pre: ['残影', '鬼魅', '连环'], v: [3, 8], perLvl: 0.22, unit: '%', w: 0.6 };
+AFFIXES.poison = { n: '毒素伤害', pre: ['蛇信', '淬毒', '腐心'], v: [10, 25], perLvl: 1.5, unit: '%', w: 0.6 };
+AFFIX_CAPS.combo = 45;
+AFFIX_CAPS.poison = 300;
+
+// 第三套装：蛇吻之袭（影刃向）
+SETS.snake = {
+  n: '蛇吻之袭', icon: '🐍', slots: ARMOR_SLOTS,
+  pieces: { helm: 1, pauld: 1, chest: 1, gloves: 1, bracer: 1, belt: 1, legs: 1, boots: 1 },
+  bonus: { 2: { poison: 25 }, 4: { combo: 10, sShadow: 30 }, 6: { poisonStack5: true } },
+  d: { 2: '毒素伤害+25%', 4: '连击概率+10%，影袭伤害+30%', 6: '毒刃的淬毒可叠加至5层，敌人死亡时毒雾伤及同伴' },
+};
+
+// 影之道天赋分支
+TALENTS.shadow = { n: '影刃之道', icon: '🗡️', nodes: [
+  { id: 's1', n: '淬毒基础', d: '毒素伤害+15%', fx: { poison: 15 } },
+  { id: 's2', n: '鬼魅步伐', d: '闪避+5%', fx: { dodge: 5 } },
+  { id: 's3', n: '连击本能·改', d: '连击概率+5%', fx: { combo: 5 } },
+  { id: 's4', n: '刃上喂毒', d: '毒素伤害+18%', fx: { poison: 18 } },
+  { id: 's5', n: '影袭精研', d: '影袭伤害+15%', fx: { sShadow: 15 } },
+  { id: 's6', n: '弱点洞察', d: '暴击率+4%', fx: { crit: 4 }, need: 3 },
+  { id: 's7', n: '连环三影', d: '连击概率+7%', fx: { combo: 7 }, need: 3 },
+  { id: 's8', n: '无影者之速', d: '闪避+6%', fx: { dodge: 6 }, need: 4 },
+], keys: [
+  { id: 'sk1', n: '影分身', d: '所有攻击有15%概率双重施放', fx: { shadowDouble: 0.15 } },
+  { id: 'sk2', n: '无影之影', d: '闪避+15%，但护甲-30%', fx: { dodge: 15, armorPctT: -0.3 } },
+] };
