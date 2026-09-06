@@ -71,6 +71,7 @@ let S = null;
 
 function newState() {
   return {
+    class: null,
     level: 1, xp: 0, hp: 100,
     gold: 50,
     mats: { transmute: 3, augment: 2, exalted: 1, chaos: 1, lock: 0, sublimate: 0 },
@@ -93,6 +94,7 @@ function loadSave() {
     const d = JSON.parse(localStorage.getItem(SAVE_KEY));
     if (!d || !d.level) return null;
     if (!d.pot) d.pot = { hp: 2, focus: 1 };
+    if (!d.class) d.class = 'elementalist';
     (d.bag || []).forEach(it => { if (!it.name && BASES[it.slot]) { const a = AFFIXES[it.affixes?.[0]?.id]; it.name = (a ? a.pre[0] + '的' : '朴素的') + BASES[it.slot][0]; } });
     Object.values(d.equip || {}).forEach(it => { if (it && !it.name && BASES[it.slot]) { const a = AFFIXES[it.affixes?.[0]?.id]; it.name = (a ? a.pre[0] + '的' : '朴素的') + BASES[it.slot][0]; } });
     if (!d.stats) d.stats = { kills: 0, elites: 0, drops: 0 };
@@ -182,7 +184,13 @@ function calc() {
   if (hasFx('perLegendary')) wdmg *= 1 + legCount * 0.04;
   if (hasFx('atkPct')) wdmg *= 1 + 0;
   let proj = 1 + setFx('projPlus') + (hasFx('projPlus') ? talentV('projPlus') : 0);
-  return { wdmg: Math.round(wdmg), hp: Math.round(hp), crit, critdmg, fire: Math.round(fire), ice: Math.round(ice), sFlame, sIce, burn, chill, vul: Math.round(vul), cast, armor: Math.round(armor), proj, maxHp: Math.round(hp) };
+  const sShadow = gearFx('sShadow') + talentV('sShadow') + setFx('sShadow');
+  const combo = Math.min(60, gearFx('combo') + talentV('combo') + setFx('combo'));
+  const poison = gearFx('poison') + talentV('poison') + setFx('poison');
+  let dodge = talentV('dodge') + (S.class === 'shadowblade' ? 15 : 0);
+  const armorT = talentV('armorPctT');
+  if (armorT) armor *= (1 + armorT);
+  return { wdmg: Math.round(wdmg), hp: Math.round(hp), crit, critdmg, fire: Math.round(fire), ice: Math.round(ice), sFlame, sIce, sShadow, combo, poison: Math.round(poison), dodge, burn, chill, vul: Math.round(vul), cast, armor: Math.round(armor), proj, maxHp: Math.round(hp) };
 }
 
 // ---------- 装备生成 ----------
@@ -376,6 +384,7 @@ function lootSound(rarity) {
 }
 function playerCast(skill) {
   if (B.over) return;
+  if (S.class === 'shadowblade') return castShadow(skill);
   if (skill === 'ice' && hasFx('banIce')) { toast('焚书者封印了寒冰箭！'); return; }
   const st = calc();
   B.turn++;
@@ -467,6 +476,69 @@ function playerCast(skill) {
   if (B.mobs.every(m => m.hp <= 0)) { victory(); return; }
   enemyTurn();
 }
+function castShadow(skill) {
+  const st = calc();
+  B.turn++;
+  const early = B.earlyBuff > 0;
+  if (early) B.earlyBuff--;
+  const focusMult = 1 + B.focus * 0.03;
+  const lowRage = (S.hp < st.maxHp * 0.3 && hasFx('lowHpRage')) ? 1.8 : 1;
+  let killed = [];
+
+  const strikeOnce = (mult, isVenom) => {
+    const targets = B.mobs.filter(m => m.hp > 0);
+    const main = targets[0];
+    if (!main) return 0;
+    let crit = Math.random() * 100 < st.crit;
+    let dmg = st.wdmg * mult * (1 + st.sShadow / 100) * focusMult;
+    if (isVenom) dmg = st.wdmg * 0.8 * focusMult;
+    if (main.vulnerable) dmg *= 1.3 + st.vul / 100;
+    if (crit) { dmg *= 1 + st.critdmg / 100; S.hp = Math.min(st.maxHp, S.hp + Math.round(st.maxHp * 0.04)); }
+    if (lowRage > 1) dmg *= lowRage;
+    dmg = Math.round(dmg * (0.9 + Math.random() * 0.2));
+    main.hp -= dmg;
+    if (isVenom) main.poison = hasFx('poisonStack5') ? 5 : 3;
+    dmgLine(main, dmg, crit, isVenom ? '毒刃没入甲缝，毒液顺着伤口渗入' : '影刃划出一道残光');
+    if (main.hp <= 0) killed.push(main);
+    return dmg;
+  };
+
+  if (skill === 'shadow') {
+    const hits = 2 + rnd(3);
+    let total = 0;
+    bline('sys', `🗡️ 影袭——${hits} 段连击！`);
+    for (let h = 0; h < hits; h++) total += strikeOnce(0.65, false);
+    if (Math.random() < 0.2 + st.combo / 100) {
+      total += strikeOnce(0.35, false);
+      bline('sys', '↪ 连击本能触发——残影追击！');
+    }
+    if (hasFx('shadowDouble') && Math.random() < 0.15) {
+      let t2 = 0;
+      for (let h = 0; h < hits; h++) t2 += strikeOnce(0.65, false);
+      total += t2;
+      bline('cine', '👥 影分身同出——两道身影，一刀两段！');
+    }
+    if (early) bline('cine', '⚡ 先发制人！伤害提升。');
+  } else {
+    let total = strikeOnce(0.8, true);
+    bline('sys', '🐍 淬毒生效——毒素开始侵蚀。');
+    if (early) bline('cine', '⚡ 先发制人！伤害提升。');
+  }
+  if (killed.length) {
+    for (const m of killed) {
+      if (m.poison > 0 && hasFx('poisonStack5')) {
+        const boom = Math.round(st.wdmg * 0.5 * m.poison);
+        for (const o of B.mobs) if (o !== m && o.hp > 0) o.hp -= boom;
+        bline('cine', `🐍 毒雾爆裂！波及同伴 ${boom} 点！`);
+      }
+      onKill(m);
+    }
+  }
+  bline('sys2', '');
+  if (B.mobs.every(m => m.hp <= 0)) { victory(); return; }
+  enemyTurn();
+}
+
 function enemyTurn() {
   const st = calc();
   let taken = 0;
@@ -474,6 +546,7 @@ function enemyTurn() {
   for (const m of B.mobs) {
     if (m.hp <= 0) continue;
     if (m.frozen > 0) { m.frozen--; bline('line', `${m.n}被冻在原地，无法行动！`); continue; }
+    if (Math.random() * 100 < st.dodge) { bline('line', `${m.n}挥空——你早已不在原地。`); continue; }
     if (B.shieldHp > 0) { B.shieldHp -= m.atk; bline('line', `${m.n}的攻击被护盾吸收（剩余 ${Math.max(0, B.shieldHp)}）。`); continue; }
     if (B.shield > 0) { B.shield--; bline('line', `👁 无眠之眼吸收了 ${m.n} 的攻击（剩余${B.shield}次）。`); continue; }
     let dmg = Math.round(m.atk * (0.85 + Math.random() * 0.3));
@@ -491,6 +564,14 @@ function enemyTurn() {
       const bd = Math.round(calc().wdmg * 0.35 * (1 + calc().burn / 100));
       m.hp -= bd; m.burn--;
       bline('cine', `🔥 灼烧啃噬着${m.n} ▸ ${bd}`);
+      if (m.hp <= 0) onKill(m);
+    }
+  }
+  for (const m of B.mobs) {
+    if (m.hp > 0 && m.poison > 0) {
+      const pd = Math.round(calc().wdmg * 0.3 * (1 + st.poison / 100)) * m.poison;
+      m.hp -= pd; m.poison--;
+      bline('cine', `🐍 毒液侵蚀着${m.n} ▸ ${pd}`);
       if (m.hp <= 0) onKill(m);
     }
   }
@@ -621,15 +702,22 @@ function refreshCombat() {
   const st = calc();
   $('#bplayer').innerHTML = `
     ${barRow('❤️ 气血', S.hp, S.hp > 50 ? 'var(--good)' : 'var(--bad)', `${Math.round(S.hp)}/${st.maxHp}`)}
-    <div class="muted">专注 ${B.focus}/8 · 烈焰弹 ${Math.round(st.wdmg * 1.6 * (1 + st.fire / 100) * (1 + st.sFlame / 100))} · 寒冰箭(全体) ${Math.round(st.wdmg * 0.95 * (1 + st.ice / 100) * (1 + st.sIce / 100))}</div>`;
+    <div class="muted">${S.class === 'shadowblade'
+      ? `影遁闪避 ${st.dodge}% · 影袭三段合计 ${Math.round(st.wdmg * 0.65 * (1 + st.sShadow / 100)) * 3} · 毒伤 ${st.poison}%`
+      : `专注 ${B.focus}/8 · 烈焰弹 ${Math.round(st.wdmg * 1.6 * (1 + st.fire / 100) * (1 + st.sFlame / 100))} · 寒冰箭(全体) ${Math.round(st.wdmg * 0.95 * (1 + st.ice / 100) * (1 + st.sIce / 100))}`}</div>`;
   const acts = $('#bactions'); acts.innerHTML = '';
   const mk = (label, fn) => {
     const b = document.createElement('button');
     b.className = 'choice-btn skill'; b.innerHTML = label;
     b.addEventListener('click', fn); acts.appendChild(b);
   };
-  mk(`🔥 烈焰弹（单体·1.6×）${st.proj > 1 ? `<span class="sub">投射物×${st.proj}</span>` : ''}`, () => playerCast('flame'));
-  mk(`❄️ 寒冰箭（全体·0.95×）${st.chill ? `<span class="sub">冰冻${Math.round(st.chill)}%</span>` : ''}`, () => playerCast('ice'));
+  if (S.class === 'shadowblade') {
+    mk(`🗡️ 影袭（连击2~4段·单体）<span class="sub">每段 ${Math.round(st.wdmg * 0.65 * (1 + st.sShadow / 100))} · 连击${st.combo}%</span>`, () => playerCast('shadow'));
+    mk(`🐍 毒刃（0.8×+淬毒3层）<span class="sub">毒伤 ${st.poison}%</span>`, () => playerCast('venom'));
+  } else {
+    mk(`🔥 烈焰弹（单体·1.6×）${st.proj > 1 ? `<span class="sub">投射物×${st.proj}</span>` : ''}`, () => playerCast('flame'));
+    mk(`❄️ 寒冰箭（全体·0.95×）${st.chill ? `<span class="sub">冰冻${Math.round(st.chill)}%</span>` : ''}`, () => playerCast('ice'));
+  }
   mk(`🧪 血药（回复40%气血）<span class="sub">持有${S.pot.hp || 0} · 本场已用${B.potHp || 0}/3</span>`, useHpPotion, (S.pot.hp || 0) < 1 || (B.potHp || 0) >= 3);
   mk(`🔵 专注瓶（专注+2）<span class="sub">持有${S.pot.focus || 0} · 本场限1</span>`, useFocusPotion, (S.pot.focus || 0) < 1 || B.potFocus);
   const flee = document.createElement('button');
@@ -1013,7 +1101,7 @@ function refresh() {
 }
 function renderTop() {
   $('#tb-res').innerHTML = `
-    <span class="res-chip">⬆️ Lv.<b>${S.level}</b></span>
+    <span class="res-chip">${CLASSES[S.class] ? CLASSES[S.class].icon : '🔥'} <b>${S.level}</b></span>
     <span class="res-chip">💰 <b>${S.gold}</b></span>
     <span class="res-chip">💠 渊晶 <b>${S.cur.yuanjing}</b></span>
     <span class="res-chip">🎐 残响 <b>${S.cur.canxiang}</b></span>
@@ -1036,15 +1124,28 @@ function showTitle() {
     <b class="gold">满级不是结束——异界回廊，才是开始。</b></p>
     ${s ? `<button class="btn btn-primary" id="t-continue">▶ 继续冒险（Lv.${s.level}）</button>` : ''}
     <button class="btn btn-primary" id="t-new" style="text-align:center">🔥 觉醒元素之力（新开始）</button>`;
-  $('#t-new').addEventListener('click', () => {
-    S = newState();
-    log('🔥 你在灰烬荒原的边缘醒来。杀出去。');
-    log('💡 出征面板：清剿小队→首领→下一张图。掉落的装备在「角色」面板装备。', 'dim');
-    $('#overlay').classList.add('hidden'); refresh();
-  });
+  $('#t-new').addEventListener('click', showClassSelect);
   if (s) $('#t-continue').addEventListener('click', () => {
     S = s; $('#overlay').classList.add('hidden'); refresh();
   });
+}
+
+function showClassSelect() {
+  $('#overlay-content').innerHTML = `
+    <h1>职业选择</h1>
+    <p class="center muted">大灾变之夜，觉醒的力量有两种形态。<br>选择你的战斗之道——这将决定你的技能、Build与命运。</p>
+    ${Object.entries(CLASSES).map(([id, c]) => `
+      <button class="diff-btn" data-c="${id}">${c.icon} <b>${c.n}</b>
+        <small>${c.d}${c.d2 ? '<br>➤ ' + c.d2 : ''}</small></button>`).join('')}`;
+  document.querySelectorAll('[data-c]').forEach(b => b.addEventListener('click', () => startGame(b.dataset.c)));
+}
+function startGame(classId) {
+  S = newState();
+  S.class = classId;
+  const c = CLASSES[classId];
+  log(`🔥 你在灰烬荒原的边缘醒来，${c.n}的力量在血管里燃烧。杀出去。`);
+  log('💡 出征面板：清剿小队→首领→下一张图。掉落的装备在「角色」面板装备。', 'dim');
+  $('#overlay').classList.add('hidden'); refresh();
 }
 
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
