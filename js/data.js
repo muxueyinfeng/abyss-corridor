@@ -74,6 +74,8 @@ const LEGENDARY_EFFECTS = [
   { id: 'L10', n: '战斗开始时获得护盾（30%气血上限）', sys: 'gen', titles: ['磐石', '守誓'] },
   { id: 'L11', n: '寒冰箭每命中一名敌人，下一击伤害+25%（可叠加）', sys: 'ice', titles: ['叠霜', '层冰'] },
   { id: 'L12', n: '战斗前3回合，伤害+80%', sys: 'gen', titles: ['先声', '惊雷'] },
+  { id: 'L13', n: '毒刃淬毒概率触发双重施毒，毒层上限+2', sys: 'poison', titles: ['万毒', '蛇渊'] },
+  { id: 'L14', n: '敌人身上的每一层毒素，使其受到你的伤害+8%', sys: 'poison', titles: ['蚀骨', '浸毒'] },
 ];
 
 // ---------- 暗金（独特 · 手写专名） ----------
@@ -90,6 +92,8 @@ const UNIQUES = [
   { slot: 'gloves', n: '焚火纹章手套', d: '专注层数提供的伤害加成翻倍。', fx: { focusDouble: true }, stat: { sFlame: 30 }, lore: '纹章灼进掌纹的那一刻，你不再需要法术书。' },
   { slot: 'pauld', n: '荒原行者肩甲', d: '气血低于30%时，伤害+80%。', fx: { lowHpRage: 0.8 }, stat: { hp: 100 }, lore: '荒原不怜悯任何人，它只承认活下来的人。' },
   { slot: 'legs', n: '王城遗冕护胫', d: '每装备一件传奇装备，攻击+4%。', fx: { perLegendary: 0.04 }, stat: { armor: 40 }, lore: '王城陷落那夜，传说们把它踩进了泥里。' },
+  { slot: 'weapon', n: '万蛇之牙', d: '毒刃的伤害+80%，淬毒层数上限+2。', fx: { poisonStackPlus: 2 }, stat: { poison: 60 }, lore: '一万条蛇把它们的牙，留在了同一柄刃上。' },
+  { slot: 'amulet', n: '腐心琉璃', d: '毒素 tick 触发时，有25%概率立即结算双倍伤害。', fx: { poisonDouble: 0.25 }, stat: { poison: 50, hp: 60 }, lore: '琉璃之心早就烂了，可它还在跳。' },
 ];
 
 // ---------- 神话（机制改变 · 手写专名） ----------
