@@ -115,7 +115,7 @@ function barRow(label, val, color, extra) {
 }
 
 // ---------- 属性派生 ----------
-const xpNeed = lv => Math.round(40 * Math.pow(1.32, lv - 1));
+const xpNeed = lv => Math.round(60 * Math.pow(1.22, lv - 1));
 const TALENT_FX = () => {
   const acc = {};
   for (const br of Object.values(TALENTS)) {
@@ -130,10 +130,11 @@ function gearFx(key) {
   let sum = 0;
   for (const it of Object.values(S.equip)) {
     if (!it) continue;
-    for (const a of (it.affixes || [])) if (a.id === key) sum += a.val;
-    if (it.stat && it.stat[key]) sum += it.stat[key];
+    const off = it.cls && S.class && it.cls !== S.class ? OFFCLASS_PENALTY : 1;
+    for (const a of (it.affixes || [])) if (a.id === key) sum += a.val * off;
+    if (it.stat && it.stat[key]) sum += it.stat[key] * off;
   }
-  return sum;
+  return Math.round(sum * 10) / 10;
 }
 function setCount(setId) {
   return Object.values(S.equip).filter(it => it && it.set === setId).length;
@@ -241,8 +242,10 @@ function rollRarity(mapLv, isBoss, inAbyss, diffMult) {
   for (const [r, w] of pool) { roll -= w; if (roll <= 0) return r; }
   return 'magic';
 }
-function makeItem(slot, rarity, ilvl) {
+function makeItem(slot, rarity, ilvl, wtype) {
   const it = { uid: uid(), slot, rarity, ilvl, affixes: [] };
+  if (slot === 'weapon') it.wtype = wtype || (BASE_WEAPON_TYPES[BASES.weapon[rnd(BASES.weapon.length)]] || 'staff');
+  if (slot !== 'weapon' && S && S.class) it.cls = Math.random() < 0.6 ? S.class : (S.class === 'elementalist' ? 'shadowblade' : 'elementalist');
   const n = RARITY[rarity].affixes;
   if (Array.isArray(n)) {
     const ex = [];
@@ -491,13 +494,14 @@ function castShadow(skill) {
     if (!main) return 0;
     let crit = Math.random() * 100 < st.crit;
     let dmg = st.wdmg * mult * (1 + st.sShadow / 100) * focusMult;
-    if (isVenom) dmg = st.wdmg * 0.8 * focusMult;
+    if (isVenom) dmg = st.wdmg * 0.8 * (1 + st.poison / 100) * focusMult;
     if (main.vulnerable) dmg *= 1.3 + st.vul / 100;
     if (crit) { dmg *= 1 + st.critdmg / 100; S.hp = Math.min(st.maxHp, S.hp + Math.round(st.maxHp * 0.04)); }
     if (lowRage > 1) dmg *= lowRage;
     dmg = Math.round(dmg * (0.9 + Math.random() * 0.2));
     main.hp -= dmg;
-    if (isVenom) main.poison = hasFx('poisonStack5') ? 5 : 3;
+    const capP = 3 + (hasFx('poisonStack5') ? 2 : 0) + (hasFx('poisonStackPlus') ? 2 : 0) + (hasFx('L13') ? 2 : 0);
+    if (isVenom) main.poison = capP;
     dmgLine(main, dmg, crit, isVenom ? '毒刃没入甲缝，毒液顺着伤口渗入' : '影刃划出一道残光');
     if (main.hp <= 0) killed.push(main);
     return dmg;
@@ -569,8 +573,10 @@ function enemyTurn() {
   }
   for (const m of B.mobs) {
     if (m.hp > 0 && m.poison > 0) {
-      const pd = Math.round(calc().wdmg * 0.3 * (1 + st.poison / 100)) * m.poison;
+      let pd = Math.round(calc().wdmg * 0.45 * (1 + st.poison / 100)) * m.poison;
+      if (hasFx('L14')) pd = Math.round(pd * (1 + 0.08 * m.poison));
       m.hp -= pd; m.poison--;
+      if (hasFx('poisonDouble') && Math.random() < 0.25) { const pd2 = pd; m.hp -= pd2; bline('cine', `💠 腐心琉璃共鸣——毒伤翻倍结算 ▸ ${pd2}`); }
       bline('cine', `🐍 毒液侵蚀着${m.n} ▸ ${pd}`);
       if (m.hp <= 0) onKill(m);
     }
@@ -590,7 +596,8 @@ function victory() {
   B.over = true;
   const inAbyss = S.mapIdx >= STORY_MAPS.length;
   const mlvl = B.mlvl;
-  const xpGain = Math.round(mlvl * 6 * (B.isBoss ? 3 : 1));
+  let xpGain = Math.round(mlvl * 14 * (B.isBoss ? 8 : 1) * (0.9 + Math.random() * 0.2));
+  if (B.inAbyss) xpGain = Math.round(xpGain * (1 + S.abyssTier * 0.15) * (S.abyssDiff === 'hell' ? 2.2 : S.abyssDiff === 'nightmare' ? 1.5 : 1));
   S.xp += xpGain;
   const gold = Math.round(mlvl * 4 * (0.8 + Math.random() * 0.5));
   S.gold += gold;
@@ -818,7 +825,7 @@ function renderHub() {
     <span class="stat-cell">🎐 残响 <b>${S.cur.canxiang}</b></span>
     ${Object.entries(CURRENCIES).map(([id, c]) => `<span class="stat-cell">${c.icon} ${c.n} <b>${S.mats[id] || 0}</b></span>`).join('')}</div>
     <button class="btn" id="buy-stone" ${S.cur.canxiang < 20 ? 'disabled' : ''}>🍶 残响×20 → 开灵石×2</button>
-    <button class="btn" id="buy-chaos" ${S.cur.canxiang < 60 || S.gold < 100 ? 'disabled' : ''}>🌀 残响×60+金币100 → 混沌石×1</button>`;
+    <button class="btn" id="buy-chaos" ${S.cur.canxiang < 60 || S.gold < 100 ? 'disabled' : ''}>🌀 残响×60+金币100 → 混元石×1</button>`;
   $('#panel-hub').innerHTML = html;
   document.querySelectorAll('[data-buy]').forEach(b => b.addEventListener('click', () => {
     const it = S.stock[+b.dataset.buy];
@@ -848,7 +855,7 @@ function renderHub() {
   $('#buy-chaos').addEventListener('click', () => {
     if (S.cur.canxiang < 60 || S.gold < 100) return;
     S.cur.canxiang -= 60; S.gold -= 100; S.mats.chaos += 1;
-    log('🌀 换得混沌石×1。'); save(); refresh();
+    log('🌀 换得混元石×1。'); save(); refresh();
   });
   const bh = $('#buy-hp'); if (bh) bh.addEventListener('click', () => {
     if (S.gold < 40) return;
@@ -917,7 +924,7 @@ function doCraft(id) {
     const n = it.rarity === 'epic' ? 4 + rnd(3) : 3 + rnd(2);
     for (let i = 0; i < n; i++) it.affixes.push(rollAffix(it.ilvl, it.affixes.map(a => a.id)));
     it.name = itemName(it.slot, it.rarity, it.affixes);
-    log(`🌀 混沌石轰鸣——词缀全部重随！听天由命。`);
+    log(`🌀 混元石轰鸣——词缀全部重随！听天由命。`);
   } else if (id === 'lock' && ['rare', 'epic'].includes(it.rarity) && it.affixes.length > 1) {
     const keep = it.affixes[rnd(it.affixes.length)];
     const n = it.affixes.length;
